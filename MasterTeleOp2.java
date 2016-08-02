@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.DcMotorController;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.DigitalChannelController;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.TouchSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 /**
@@ -26,7 +27,13 @@ public class MasterTeleOp2 extends OpMode {
     DcMotor hangAngle;
     DcMotor hangExtension;
     // define servos
+    Servo climberArm;
+    Servo redZipline;
+    Servo blueZipline;
     Servo debrisBlock;
+    Servo allClearRed;
+    Servo allClearBlue;
+
     AnalogInput debrisTouch;
     AnalogInput extensionTouch;
     AnalogInput angleTouch;
@@ -38,6 +45,12 @@ public class MasterTeleOp2 extends OpMode {
 
 
     //set the toggle states for zip line and all clear movements
+    int redZiplineFlag = 0;
+    int blueZiplineFlag = 0;
+    int AllClearFlag = 0;
+    double climberServoPosition;
+    double ziplineServoPosition;
+
     ElapsedTime dropTime;
 
     //set motor powers
@@ -48,10 +61,25 @@ public class MasterTeleOp2 extends OpMode {
     final double closeArmPower = -.5;
     final double extendArmPower = 1;
 
+    // Set arm motor positions
+    int climberDropPosition = 15300;
+    int dangerLowerLimitPosition = 4167;
 
+    // Set Climber Servo Positions
+    final double climberDropClosed = 1;
+    final double climberDropOpen = 0;
 
+    // Set Extension Arm limit
+    int safeExtension = 1000;
 
     // Set Servo Positions for Flag Servos
+    final double blueFlagUp = 0;
+    final double blueFlagMiddle = .6;
+    final double blueFlagDown = .7;
+    final double redFlagUp = 1;
+    final double redFlagMiddle = .4;
+    final double redFlagDown = .3;
+
     final int toggleWaitTime = 10;
     final double analogPressed = .2;
 
@@ -79,7 +107,12 @@ public class MasterTeleOp2 extends OpMode {
         hangExtension = hardwareMap.dcMotor.get("hang_extension");
 
         // Connect to all the servos
+        climberArm = hardwareMap.servo.get("climber_arm");
+        redZipline = hardwareMap.servo.get("red_zipline");
+        blueZipline = hardwareMap.servo.get("blue_zipline");
         debrisBlock = hardwareMap.servo.get("debris_block");
+        allClearRed = hardwareMap.servo.get("all_clear_red");
+        allClearBlue = hardwareMap.servo.get("all_clear_blue");
 
         // These are limit switches for the arm and debris blocker
         debrisTouch = hardwareMap.analogInput.get("debris_touch");
@@ -112,10 +145,14 @@ public class MasterTeleOp2 extends OpMode {
         hangAngle.setPower(0);
         hangExtension.setPower(0);
 
+        climberServoPosition = climberArm.getPosition();
+        ziplineServoPosition = blueZipline.getPosition();
+
 
         //set the start position and limits to variables
         final int hangAngleStart = hangAngle.getCurrentPosition();
 
+        climberDropPosition += hangAngleStart;
 
         //Assign starting debris state
         debrisServoState = debrisServo.off;
@@ -143,19 +180,19 @@ public class MasterTeleOp2 extends OpMode {
             // b -- move backwards with backwards power
             // Left and Right trigger for pivoting left or right
             // Otherwise tank mode for moving
-            if (gamepad1.dpad_up) {
+            if (gamepad1.a) {
                 //move forward straight with a
                 setDriveMotors(forwardPower, forwardPower);
 
-            } else if (gamepad1.dpad_down) {
+            } else if (gamepad1.b) {
                 //move backwards straight with b
                 setDriveMotors(backwardPower, backwardPower);
 
-            } else if (gamepad1.dpad_left) {
+            } else if (gamepad1.left_trigger > analogPressed) {
                 //pivot left with left trigger
                 setDriveMotors(-turnPower, turnPower);
 
-            } else if (gamepad1.dpad_right) {
+            } else if (gamepad1.right_trigger > analogPressed) {
                 //pivot right with right trigger
                 setDriveMotors(turnPower, -turnPower);
             } else {
@@ -164,8 +201,47 @@ public class MasterTeleOp2 extends OpMode {
 
             }
 
+            //determine new zipline servo position based off
+            //analog sticks
+            if (-gamepad2.right_stick_x < - analogPressed){
+                ziplineServoPosition -= .02;
+                Thread.sleep(toggleWaitTime);
+                if (ziplineServoPosition < 0){
+                    ziplineServoPosition = 0;
+                }
+            }else if(-gamepad2.right_stick_x > analogPressed){
+                ziplineServoPosition += .02;
+                Thread.sleep(toggleWaitTime);
+                if (ziplineServoPosition > 1){
+                    ziplineServoPosition = 1;
+                }
+            }
+            //determine new climber arm position
+            //based on dpad
+            if (gamepad2.dpad_left){
+                climberServoPosition -= .02;
+                Thread.sleep(toggleWaitTime);
+                if (climberServoPosition < 0){
+                    climberServoPosition = 0;
+                }
+            }else if(gamepad2.dpad_right){
+                climberServoPosition += .02;
+                Thread.sleep(toggleWaitTime);
+                if (climberServoPosition > 1){
+                    climberServoPosition = 1;
+                }
+            }
+            //set climber arm position
+            climberArm.setPosition(climberServoPosition);
+
             //set zipline position to correct zipline servo
             //depending on the switch
+            if(alliance.getState() == true){
+                redZipline.setPosition(ziplineServoPosition);
+            }else{
+                blueZipline.setPosition(ziplineServoPosition);
+            }
+            telemetry.addData("position", climberServoPosition);
 
 
             //Debris Servo State Machine
@@ -175,7 +251,7 @@ public class MasterTeleOp2 extends OpMode {
                 //if x is pressed go to up
                 //otherwise stop the motor
                 case off:
-                    if(gamepad1.x){
+                    if(gamepad2.x){
                         debrisServoState = debrisServo.up;
                     }else{
                         debrisBlock.setPosition(.5);
@@ -215,7 +291,7 @@ public class MasterTeleOp2 extends OpMode {
                 case upWait:
                     if(gamepad2.dpad_left){
                         debrisServoState = debrisServo.off;
-                    }else if(gamepad1.x){
+                    }else if(gamepad2.x){
                         debrisServoState = debrisServo.down;
                         dropTime.reset();
                     }else if(debrisTouch.getValue() < 500){
@@ -225,7 +301,7 @@ public class MasterTeleOp2 extends OpMode {
                     }
             }
 
-            if (gamepad1.left_trigger > analogPressed) {
+            if (gamepad2.left_trigger > analogPressed) {
                 //open arm with left trigger
                 if (angle_forward.getState() == true){
                     hangAngle.setPower(0);
@@ -235,7 +311,7 @@ public class MasterTeleOp2 extends OpMode {
                 }
 
 
-            } else if (gamepad1.right_trigger > analogPressed) {
+            } else if (gamepad2.right_trigger > analogPressed) {
                 //Check if arm is at the limit
                 if(angleTouch.getValue() > 0){
                     hangAngle.setPower(0);
@@ -253,15 +329,15 @@ public class MasterTeleOp2 extends OpMode {
             }
 
             //Extend the arm
-            if (gamepad1.y) {
+            if (gamepad2.dpad_up) {
                 if(extension_forward.getState() == true){
-                  hangExtension.setPower(0);
+                    hangExtension.setPower(0);
                 }
                 else {
                     //extend arm with up
                     hangExtension.setPower(extendArmPower);
                 }
-            } else if (gamepad1.a) {
+            } else if (gamepad2.dpad_down) {
                 //retract arm with down
                 if (extensionTouch.getValue()>1000){
                     //check if the arm is touching the switch
@@ -279,6 +355,24 @@ public class MasterTeleOp2 extends OpMode {
                 hangExtension.setPower(0);
             }
             //All Clear -- Toggle with 2 states
+            if (gamepad1.y) {
+                if (AllClearFlag == 0) {
+                    //if the zipline arm is down raise it
+                    allClearBlue.setPosition(1);
+                    allClearRed.setPosition(0);
+                    AllClearFlag = 1;
+
+                } else {
+                    //if the zipline arm is not down lower it
+                    allClearBlue.setPosition(0);
+                    allClearRed.setPosition(1);
+                    AllClearFlag = 0;
+
+                }
+                while (gamepad1.y) {
+                    Thread.sleep(toggleWaitTime);
+                }
+            }
 
             telemetry.addData("angle", hangAngle.getCurrentPosition());
             telemetry.addData("extension", hangExtension.getCurrentPosition());
