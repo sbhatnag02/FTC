@@ -169,7 +169,7 @@ public class MasterTeleOpOutreach extends OpMode {
 
 
             //Debris Servo State Machine
-            switch(debrisServoState){
+          /*  switch(debrisServoState){
 
                 //don't move the servo
                 //if x is pressed go to up
@@ -224,7 +224,7 @@ public class MasterTeleOpOutreach extends OpMode {
                         debrisBlock.setPosition(.5);
                     }
             }
-
+*/
             if (gamepad1.left_trigger > analogPressed) {
                 //open arm with left trigger
                 if (angle_forward.getState() == true){
